@@ -5,8 +5,8 @@
 ------
 
 > Write the answers for the subjective questions here
-![Plot for Iris dataset](q1-1.png)
-![Plot for Iris dataset](q1-2.png)
+![Plot for Iris dataset](images/q1-1.png)
+![Plot for Iris dataset](images/q1-2.png)
 
 Accuracy of AdaBoostClassifier = 0.95
 Accuracy for Decision Stump = 0.945
