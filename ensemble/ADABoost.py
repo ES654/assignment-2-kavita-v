@@ -1,4 +1,10 @@
 
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap
+import copy
+
 class AdaBoostClassifier():
     def __init__(self, base_estimator, n_estimators=3): # Optional Arguments: Type of estimator
         '''
@@ -7,6 +13,8 @@ class AdaBoostClassifier():
                                You can pass the object of the estimator class
         :param n_estimators: The maximum number of estimators at which boosting is terminated. In case of perfect fit, the learning procedure may be stopped early.
         '''
+        self.base_estimator = base_estimator
+        self.n_estimators = n_estimators
 
         pass
 
@@ -17,6 +25,39 @@ class AdaBoostClassifier():
         X: pd.DataFrame with rows as samples and columns as features (shape of X is N X P) where N is the number of samples and P is the number of columns.
         y: pd.Series with rows corresponding to output variable (shape of Y is N)
         """
+        classifiers = []
+        estimator_alphas = []
+        w = [1/len(X) for i in range(len(X))]
+        self.weights = []
+        for i in range(self.n_estimators): 
+            self.weights.append(copy.deepcopy(w))        
+            clf = self.base_estimator.fit(X,y, w)
+            y_pred = clf.predict(X)
+            incorrect = []
+            for i in range(len(y)):
+                if y[i] != y_pred[i]:
+                    incorrect.append(i)
+            totalerror = 0
+            for ind in incorrect:
+                totalerror += w[ind]
+            totalerror = totalerror/sum(w)
+            significance = (1/2)*np.log((1-totalerror)/totalerror)
+            for i in range(len(w)):
+                if i in incorrect:
+                    w[i] = w[i]*np.exp(significance)
+                else:
+                    w[i] = w[i]*np.exp(-significance)
+            estimator_alphas.append(significance)
+            norm_w = [float(i)/sum(w) for i in w]
+            w = norm_w
+            classifiers.append(copy.deepcopy(clf))
+
+        self.classifiers = classifiers
+        self.estimator_alphas = estimator_alphas
+        self.classes = np.unique(y)
+        self.X = X
+        self.y = y
+
         pass
 
     def predict(self, X):
@@ -26,7 +67,19 @@ class AdaBoostClassifier():
         Output:
         y: pd.Series with rows corresponding to output variable. THe output variable in a row is the prediction for sample in corresponding row in X.
         """
-        pass
+        y_pred = []
+        for j in X.index.values:              
+            pred_scores = [0 for i in self.classes]
+            for i in range(self.n_estimators):
+                clf = self.classifiers[i]
+                alpha = self.estimator_alphas[i]
+                pred = clf.predict(X[X.index==j])
+                pred_scores[pred[0]] += alpha
+            final_pred = np.argmax(pred_scores)
+            y_pred.append(final_pred)
+        
+        return pd.Series(y_pred)
+
 
     def plot(self):
         """
@@ -42,4 +95,46 @@ class AdaBoostClassifier():
 
         This function should return [fig1, fig2]
         """
-        pass
+        h = .02
+        i=1
+        X = self.X
+        y = self.y
+        fig1 = plt.figure(figsize=(27, 9))
+        x_min, x_max = X[X.columns[0]].min() - .5, X[X.columns[0]].max() + .5
+        y_min, y_max = X[X.columns[1]].min() - .5, X[X.columns[1]].max() + .5
+        xx, yy = np.meshgrid(np.arange(x_min, x_max, h), np.arange(y_min, y_max, h))
+        cm = plt.cm.RdBu
+        cm_bright = ListedColormap(['#FF0000', '#0000FF'])
+        
+       
+        for clf in self.classifiers:
+            ax = plt.subplot(1, len(self.classifiers) , i)
+            Z = np.array(clf.predict(pd.DataFrame(np.c_[xx.ravel(), yy.ravel()], columns=X.columns)))
+            
+            Z = Z.reshape(xx.shape)
+            ax.contourf(xx, yy, Z, cmap=cm, alpha=.8)
+            size=[1000*w for w in self.weights[i-1]]
+            ax.scatter(X[X.columns[0]], X[X.columns[1]], c=y, s=size, cmap=cm_bright, edgecolors='k')
+            ax.set_xlim(xx.min(), xx.max())
+            ax.set_ylim(yy.min(), yy.max())
+            ax.set_xlabel(str(X.columns[0]))
+            ax.set_ylabel(str(X.columns[1]))
+            plt.title("Classifier "+str(i)+": Alpha="+str(self.estimator_alphas[i-1]))
+            i+=1
+            
+        fig2 = plt.figure(figsize=(9,9))
+        ax2 = plt.subplot(1,1,1)
+        Z = np.array(self.predict(pd.DataFrame(np.c_[xx.ravel(), yy.ravel()], columns=X.columns)))
+        Z = Z.reshape(xx.shape)
+        ax2.contourf(xx, yy, Z, cmap=cm, alpha=.8)
+        size=[1000*w for w in self.weights[i-2]]
+        ax2.scatter(X[X.columns[0]], X[X.columns[1]], c=y, s=size, cmap=cm_bright, edgecolors='k')
+        ax2.set_xlim(xx.min(), xx.max())
+        ax2.set_ylim(yy.min(), yy.max())
+        plt.title("Combined Decision Surface")
+        
+        plt.tight_layout()
+        plt.show()
+
+        return [fig1,fig2]
+
